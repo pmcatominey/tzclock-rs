@@ -1,0 +1,20 @@
+[package]
+name = "tzclock"
+version = "0.1.0"
+edition = "2018"
+publish = false
+
+[dependencies]
+cortex-m = "0.6.2"
+cortex-m-rt = "0.6.12"
+panic-halt = "0.2.0"
+tm1637 = "0.1.0"
+
+[dependencies.embedded-hal]
+version = "0.2.3"
+features = ["unproven"]
+
+[dependencies.stm32f3xx-hal]
+# version = "0.4.3"
+git = "https://github.com/peter-wilkins/stm32f3xx-hal"
+features = ["stm32f303xc"]
