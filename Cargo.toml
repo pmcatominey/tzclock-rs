@@ -6,15 +6,15 @@ publish = false
 
 [dependencies]
 cortex-m = "0.6.2"
+cortex-m-semihosting = "0.3.5"
+panic-semihosting = "0.5.3"
 cortex-m-rt = "0.6.12"
-panic-halt = "0.2.0"
 tm1637 = "0.1.0"
 
 [dependencies.embedded-hal]
 version = "0.2.3"
 features = ["unproven"]
 
-[dependencies.stm32f3xx-hal]
-# version = "0.4.3"
-git = "https://github.com/peter-wilkins/stm32f3xx-hal"
-features = ["stm32f303xc"]
+[dependencies.stm32f1xx-hal]
+version = "0.5.3"
+features = ["rt", "stm32f103", "medium"]
