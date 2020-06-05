@@ -6,6 +6,7 @@ extern crate panic_semihosting;
 
 
 extern crate stm32f1xx_hal as hal;
+use hal::rtc::Rtc;
 use hal::delay::Delay;
 use hal::gpio::gpioa::{PA8, PA9, PA10, PA11};
 use hal::gpio::gpiob::{PB6, PB7, PB8, PB9, PB14, PB15};
@@ -37,7 +38,10 @@ fn main() -> ! {
 
     // Clock setup
     let clocks = rcc.cfgr.adcclk(2.mhz()).freeze(&mut flash.acr);
-    let mut dx = Delay::new(cp.SYST, clocks);
+    let mut pwr = dp.PWR;
+    let mut backup_domain = rcc.bkp.constrain(dp.BKP, &mut rcc.apb1, &mut pwr);
+    let mut delay = Delay::new(cp.SYST, clocks);
+    let mut rtc = Rtc::rtc(dp.RTC, &mut backup_domain);
 
     // GPIO setup
     let mut gpioa = dp.GPIOA.split(&mut rcc.apb2);
@@ -53,9 +57,8 @@ fn main() -> ! {
     let mut pa9 =  gpioa.pa9.into_open_drain_output(&mut gpioa.crh);
     let mut pa8 =  gpioa.pa8.into_open_drain_output(&mut gpioa.crh);
 
-
     let mut res = Resources {
-        delay: & mut dx,
+        delay: & mut delay,
         display0: &mut TM1637::new(&mut pb9,&mut  pb8),
         display1: &mut TM1637::new(&mut pb7,&mut  pb6),
         display2: &mut TM1637::new(&mut pa11,&mut  pa10),
@@ -63,16 +66,17 @@ fn main() -> ! {
         display4: &mut TM1637::new(&mut pb15,&mut  pb14),
     };
 
-    let clock_utc = Clock{hours: 15, minutes: 30};
+    let mut clock_utc = Clock{hours: 16, minutes: 50};
 
     res.init();
     res.set_display_brightness(100);
-    res.set_display_time(&clock_utc);
+    
 
     let mut adc = adc::Adc::adc2(dp.ADC2, &mut rcc.apb2, clocks);
     let mut ch1 = gpiob.pb1.into_analog(&mut gpiob.crl);
     let adc_max = adc.max_sample() as u32;
     let mut b: u32 = 100;
+    let mut minutes_acc: u32 = clock_utc.minutes as u32;
 
     loop {
         let data1: u32 = adc.read(&mut ch1).unwrap();
@@ -80,8 +84,24 @@ fn main() -> ! {
         if x.max(b) - x.min(b) > 5 {
             b = x;
             res.set_display_brightness(b as u8 >> 5);
-            res.delay.delay_ms(5_u16);
         }
+
+        // crude placeholder clock
+        let t = rtc.current_time();
+        if t >= 60 {
+            minutes_acc += 1;
+            rtc.set_time(0);
+            clock_utc.add_minutes(1);
+
+            if minutes_acc >= 60 {
+                minutes_acc = 0;
+                clock_utc.add_hours(1);
+            }
+
+            res.set_display_time(&clock_utc);
+        }
+
+        res.delay.delay_ms(50_u16);
     }
 }
 
@@ -128,19 +148,19 @@ impl Clock {
     }
 
     fn add_hours(&mut self, h: u8) {
-        self.hours = self.hours.wrapping_add(h) % 23;
+        self.hours = self.hours.wrapping_add(h) % 24;
     }
 
     fn sub_hours(&mut self, m: u8) {
-        self.hours = self.hours.wrapping_sub(m) % 23;
+        self.hours = self.hours.wrapping_sub(m) % 24;
     }
 
     fn add_minutes(&mut self, m: u8) {
-        self.minutes = self.minutes.wrapping_add(m) % 59;
+        self.minutes = self.minutes.wrapping_add(m) % 60;
     }
 
     fn sub_minutes(&mut self, m: u8) {
-        self.minutes = self.minutes.wrapping_sub(m) % 59;
+        self.minutes = self.minutes.wrapping_sub(m) % 60;
     }
 
     fn to_hex(&self, offset: i8) -> [u8; 4] {
