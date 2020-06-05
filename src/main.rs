@@ -34,13 +34,14 @@ fn main() -> ! {
     let cp = cortex_m::Peripherals::take().unwrap();
     let mut rcc = dp.RCC.constrain();
     let mut flash = dp.FLASH.constrain();
+
+    // Clock setup
     let clocks = rcc.cfgr.adcclk(2.mhz()).freeze(&mut flash.acr);
+    let mut dx = Delay::new(cp.SYST, clocks);
 
-    hprintln!("clocl {}", clocks.sysclk().0).unwrap();
-
+    // GPIO setup
     let mut gpioa = dp.GPIOA.split(&mut rcc.apb2);
     let mut gpiob = dp.GPIOB.split(&mut rcc.apb2);
-    // let gpiod = dp.GPIOD.split(&mut rcc.ahb);
     let mut pb15 =  gpiob.pb15.into_open_drain_output(&mut gpiob.crh);
     let mut pb14 =  gpiob.pb14.into_open_drain_output(&mut gpiob.crh);
     let mut pb9 =  gpiob.pb9.into_open_drain_output(&mut gpiob.crh);
@@ -51,7 +52,6 @@ fn main() -> ! {
     let mut pa10 =  gpioa.pa10.into_open_drain_output(&mut gpioa.crh);
     let mut pa9 =  gpioa.pa9.into_open_drain_output(&mut gpioa.crh);
     let mut pa8 =  gpioa.pa8.into_open_drain_output(&mut gpioa.crh);
-    let mut dx = Delay::new(cp.SYST, clocks);
 
 
     let mut res = Resources {
@@ -63,9 +63,11 @@ fn main() -> ! {
         display4: &mut TM1637::new(&mut pb15,&mut  pb14),
     };
 
+    let clock_utc = Clock{hours: 15, minutes: 30};
+
     res.init();
     res.set_display_brightness(100);
-    res.set_display_hex(&[1, 2, 3, 4]);
+    res.set_display_time(&clock_utc);
 
     let mut adc = adc::Adc::adc2(dp.ADC2, &mut rcc.apb2, clocks);
     let mut ch1 = gpiob.pb1.into_analog(&mut gpiob.crl);
@@ -75,9 +77,9 @@ fn main() -> ! {
     loop {
         let data1: u32 = adc.read(&mut ch1).unwrap();
         let x: u32 = 255 * data1 / adc_max;
-        if x.max(b) - x.min(b) > 10 {
+        if x.max(b) - x.min(b) > 5 {
             b = x;
-            res.set_display_brightness(b as u8);
+            res.set_display_brightness(b as u8 >> 5);
             res.delay.delay_ms(5_u16);
         }
     }
@@ -106,11 +108,52 @@ impl<'a> Resources<'a> {
         self.display4.set_brightness(b, self.delay);
     }
 
-    fn set_display_hex(&mut self, d: &[u8]) {
-        self.display0.print_hex(0, d, self.delay);
-        self.display1.print_hex(0, d, self.delay);
-        self.display2.print_hex(0, d, self.delay);
-        self.display3.print_hex(0, d, self.delay);
-        self.display4.print_hex(0, d, self.delay);
+    fn set_display_time(&mut self, c: &Clock) {
+        self.display0.print_hex(0, &c.to_hex(9), self.delay);
+        self.display1.print_hex(0, &c.to_hex(1), self.delay);
+        self.display2.print_hex(0, &c.to_hex(-4), self.delay);
+        self.display3.print_hex(0, &c.to_hex(-5), self.delay);
+        self.display4.print_hex(0, &c.to_hex(-7), self.delay);
+    }
+}
+
+struct Clock {
+    hours: u8,
+    minutes: u8,
+}
+
+impl Clock {
+    fn new() -> Self {
+        Clock{hours: 0, minutes: 0}
+    }
+
+    fn add_hours(&mut self, h: u8) {
+        self.hours = self.hours.wrapping_add(h) % 23;
+    }
+
+    fn sub_hours(&mut self, m: u8) {
+        self.hours = self.hours.wrapping_sub(m) % 23;
+    }
+
+    fn add_minutes(&mut self, m: u8) {
+        self.minutes = self.minutes.wrapping_add(m) % 59;
+    }
+
+    fn sub_minutes(&mut self, m: u8) {
+        self.minutes = self.minutes.wrapping_sub(m) % 59;
+    }
+
+    fn to_hex(&self, offset: i8) -> [u8; 4] {
+        let h = if offset > 0 {
+            self.hours.wrapping_add(offset as u8) % 24
+        } else {
+            self.hours.wrapping_sub(-offset as u8) % 24
+        };
+        [
+            h /10 % 10,
+            h % 10,
+            self.minutes /10 % 10,
+            self.minutes % 10,
+        ]
     }
 }
